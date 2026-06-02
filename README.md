@@ -1,8 +1,8 @@
 # PC-98 Catalog Launcher
 
 Small Windows launcher for a local PC-98 emulator setup. It scans a user-owned
-RAR catalog, extracts selected games into a local cache, launches Neko Project
-21/W, and opens a local GGUF-powered translation overlay.
+RAR/ZIP catalog, extracts selected games into a local cache, launches Neko
+Project 21/W, and opens a local GGUF-powered translation overlay.
 
 This repository intentionally does not include emulator binaries, BIOS ROMs,
 commercial game archives, disk images, extracted media, screenshots, or local
@@ -14,7 +14,7 @@ Create or keep these folders next to the scripts:
 
 ```text
 emulator/      Neko Project 21/W files, including np21x64w.exe and np21x64w.ini
-games-rard/    Your legally obtained .rar game catalog
+games-rard/    Your legally obtained .rar/.zip game catalog
 disks/         Local extraction cache and your own disk images
 models/        Local GGUF model cache
 ```
@@ -40,8 +40,8 @@ Controls:
 
 The catalog launcher:
 
-- scans `.rar` files recursively under `games-rard/`
-- displays names without the `.rar` suffix
+- scans `.rar` and `.zip` files recursively under `games-rard/`
+- displays names without the archive suffix
 - stores recent play history and favorites in `launcher-state.json`
 - extracts selected archives into `disks\catalog\`
 - mounts detected PC-98 disk images through `scripts\run-pc98.ps1`

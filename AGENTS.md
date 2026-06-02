@@ -8,7 +8,7 @@ entrypoint is `game-launcher.bat`; implementation code lives in `scripts/`.
 Important local folders:
 
 - `emulator/`: user-provided Neko Project 21/W files.
-- `games-rard/`: user-owned `.rar` game catalog.
+- `games-rard/`: user-owned `.rar`/`.zip` game catalog.
 - `disks/`: extraction cache and user disk images.
 - `models/`: local GGUF and mmproj model cache.
 
@@ -23,9 +23,10 @@ disk images, screenshots, downloaded models, or local launcher state.
 - Translator: `python scripts\translate-screenshot.py --watch`
 - Local LLM bootstrap: `python scripts\local_llm.py status`
 
-The launcher scans `.rar` files under `games-rard/`, extracts selected archives
-into `disks\catalog\`, launches Neko Project through `run-pc98.ps1`, starts a
-local `llama-server` when needed, and opens the translation watcher.
+The launcher scans `.rar` and `.zip` files under `games-rard/`, extracts
+selected archives into `disks\catalog\`, launches Neko Project through
+`run-pc98.ps1`, starts a local `llama-server` when needed, and opens the
+translation watcher.
 
 ## Launcher State
 

@@ -19,8 +19,10 @@ ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name.lower() == "scripts" else SCRIPT_DIR
 CATALOG_DIR = ROOT / "games-rard"
 CACHE_DIR = ROOT / "disks" / "catalog"
 STATE_PATH = ROOT / "launcher-state.json"
+VERSION = "1.0.0"
 RECENT_LIMIT = 10
 PAGE_SIZE = 24
+ARCHIVE_EXTENSIONS = {".rar", ".zip"}
 
 HARD_DISK_EXTENSIONS = {".hdi", ".thd", ".nhd", ".hdd", ".hdn", ".vhd"}
 FLOPPY_EXTENSIONS = {
@@ -165,7 +167,14 @@ def scan_catalog():
     if not CATALOG_DIR.exists():
         return []
 
-    archives = sorted(CATALOG_DIR.rglob("*.rar"), key=lambda p: friendly_name(p).lower())
+    archives = sorted(
+        (
+            path
+            for path in CATALOG_DIR.rglob("*")
+            if path.is_file() and path.suffix.lower() in ARCHIVE_EXTENSIONS
+        ),
+        key=lambda p: (friendly_name(p).lower(), str(p).lower()),
+    )
     return [
         {
             "name": friendly_name(path),
@@ -677,7 +686,7 @@ def main_menu(catalog, state):
     while True:
         clear_screen()
         draw_header(
-            "PC-98 Game Launcher",
+            f"PC-98 Game Launcher v{VERSION}",
             f"{len(catalog)} games found | Up/Down select | Enter choose | Esc quit",
         )
         for index, (label, _) in enumerate(menu_items):
@@ -720,7 +729,12 @@ def main_menu(catalog, state):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="PC-98 RAR catalog launcher.")
+    parser = argparse.ArgumentParser(description="PC-98 archive catalog launcher.")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"PC-98 Game Launcher {VERSION}",
+    )
     parser.add_argument(
         "--list",
         action="store_true",
@@ -748,7 +762,7 @@ def main():
     args = parse_args()
     catalog = scan_catalog()
     if not catalog:
-        print(paint(f"No .rar games found in {CATALOG_DIR}", Color.red))
+        print(paint(f"No supported .rar or .zip games found in {CATALOG_DIR}", Color.red))
         return 1
 
     state = load_state()
