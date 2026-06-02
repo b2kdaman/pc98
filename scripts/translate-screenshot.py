@@ -85,6 +85,8 @@ kernel32 = ctypes.windll.kernel32
 WH_MOUSE_LL = 14
 HC_ACTION = 0
 WM_RBUTTONDOWN = 0x0204
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+STILL_ACTIVE = 259
 
 
 class Rect(ctypes.Structure):
@@ -152,6 +154,12 @@ user32.PostThreadMessageW.argtypes = [
 kernel32.GetCurrentThreadId.restype = ctypes.c_ulong
 kernel32.GetModuleHandleW.argtypes = [ctypes.c_wchar_p]
 kernel32.GetModuleHandleW.restype = ctypes.c_void_p
+kernel32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_bool, ctypes.c_ulong]
+kernel32.OpenProcess.restype = ctypes.c_void_p
+kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+kernel32.GetExitCodeProcess.restype = ctypes.c_bool
+kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+kernel32.CloseHandle.restype = ctypes.c_bool
 
 
 class GlobalMouseTriggerHook:
@@ -268,6 +276,33 @@ def point_is_in_emulator_client(x, y, title_hint):
         return False
     left, top, right, bottom = client_bbox(hwnd)
     return left <= x < right and top <= y < bottom
+
+
+def process_is_running(pid):
+    if not pid:
+        return True
+
+    handle = kernel32.OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION,
+        False,
+        int(pid),
+    )
+    if not handle:
+        return False
+
+    exit_code = ctypes.c_ulong(0)
+    alive = (
+        bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)))
+        and exit_code.value == STILL_ACTIVE
+    )
+    kernel32.CloseHandle(handle)
+    return alive
+
+
+def emulator_is_running(title_hint, emulator_pid):
+    if emulator_pid:
+        return process_is_running(emulator_pid)
+    return find_emulator_hwnd_or_none(title_hint) is not None
 
 
 def window_bbox(hwnd):
@@ -688,60 +723,74 @@ def run_once(args):
 def run_watch(args):
     print("Waiting for right-click events.")
     print("Right-click over the emulator window to translate. The click is consumed.")
+    print("The watcher exits automatically when the emulator closes.")
     print("Press Ctrl+C to stop.\n")
 
     mouse_hook = GlobalMouseTriggerHook(args.title)
     mouse_hook.start()
     display = None if args.no_popup else LiveTranslationWindow(args.title)
     next_layout_check = 0.0
-    while True:
-        try:
-            if display:
-                display.pump()
-                now = time.monotonic()
-                if now >= next_layout_check:
+    seen_emulator = args.emulator_pid is not None
+    try:
+        while True:
+            emulator_alive = emulator_is_running(args.title, args.emulator_pid)
+            if emulator_alive:
+                seen_emulator = True
+            elif seen_emulator:
+                print("\nEmulator closed; stopping translation watcher.")
+                return
+
+            try:
+                if display:
+                    display.pump()
+                    if display.closed:
+                        return
+                    now = time.monotonic()
+                    if now >= next_layout_check:
+                        display.position_below_emulator()
+                        next_layout_check = now + 2.0
+                    should_translate = (
+                        mouse_hook.consume() or display.consume_translation_request()
+                    )
+                else:
+                    should_translate = mouse_hook.consume()
+
+                if not should_translate:
+                    time.sleep(0.05)
+                    continue
+
+                if display:
                     display.position_below_emulator()
-                    next_layout_check = now + 2.0
-                should_translate = (
-                    mouse_hook.consume() or display.consume_translation_request()
+                    display.hide_for_capture()
+                image, title = capture_window_image(args.title)
+                if display:
+                    display.position_below_emulator()
+                    display.show_after_capture()
+                    display.show_waiting()
+
+                print(f"Right-click received in {title}; translating")
+                print("Sending screenshot to local LLM for translation...")
+                translated = translate_with_local_llm(
+                    image,
+                    args.language,
+                    args.model,
+                    args.base_url,
+                    args.api_key,
                 )
-            else:
-                should_translate = mouse_hook.consume()
+                print("\n" + translated["text"] + "\n")
 
-            if not should_translate:
-                time.sleep(0.05)
-                continue
-
-            if display:
-                display.position_below_emulator()
-                display.hide_for_capture()
-            image, title = capture_window_image(args.title)
-            if display:
-                display.position_below_emulator()
-                display.show_after_capture()
-                display.show_waiting()
-
-            print(f"Right-click received in {title}; translating")
-            print("Sending screenshot to local LLM for translation...")
-            translated = translate_with_local_llm(
-                image,
-                args.language,
-                args.model,
-                args.base_url,
-                args.api_key,
-            )
-            print("\n" + translated["text"] + "\n")
-
-            if display:
-                display.update_text(translated)
-                next_layout_check = time.monotonic() + 2.0
-        except KeyboardInterrupt:
-            print("\nStopped.")
-            mouse_hook.stop()
-            return
-        except Exception as error:
-            print(f"\nError: {error}\n", file=sys.stderr)
-            time.sleep(1)
+                if display:
+                    display.update_text(translated)
+                    next_layout_check = time.monotonic() + 2.0
+            except Exception as error:
+                print(f"\nError: {error}\n", file=sys.stderr)
+                time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nStopped.")
+    finally:
+        mouse_hook.stop()
+        if display:
+            display.close()
 
 
 def main():
@@ -772,6 +821,12 @@ def main():
         "--watch",
         action="store_true",
         help="Open the live overlay and translate when you right-click the emulator.",
+    )
+    parser.add_argument(
+        "--emulator-pid",
+        type=int,
+        default=None,
+        help="Exit the watcher when this emulator process id is no longer running.",
     )
     parser.add_argument("--no-popup", action="store_true", help="Print only.")
     args = parser.parse_args()

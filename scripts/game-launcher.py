@@ -262,11 +262,25 @@ def run_powershell_script(script_path, args=None):
     if args:
         command.extend(str(arg) for arg in args)
 
-    return subprocess.Popen(command, cwd=ROOT)
+    result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+    if result.returncode != 0:
+        details = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(details or f"PowerShell script failed: {script_path}")
+    return result.stdout.strip()
 
 
-def start_translator():
+def extract_process_id(output):
+    for line in reversed(output.splitlines()):
+        line = line.strip()
+        if line.isdigit():
+            return int(line)
+    return None
+
+
+def start_translator(emulator_pid=None):
     command = [sys.executable, str(SCRIPT_DIR / "translate-screenshot.py"), "--watch"]
+    if emulator_pid:
+        command.extend(["--emulator-pid", str(emulator_pid)])
     creation_flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
     return subprocess.Popen(command, cwd=ROOT, creationflags=creation_flags)
 
@@ -397,9 +411,13 @@ def launch_archive(archive, state):
 
     print("Preparing local GGUF translation runtime...")
     local_llm.ensure_ready()
-    run_powershell_script(SCRIPT_DIR / "run-pc98.ps1", ["-Image", *selected_images])
+    emulator_output = run_powershell_script(
+        SCRIPT_DIR / "run-pc98.ps1",
+        ["-Image", *selected_images],
+    )
+    emulator_pid = extract_process_id(emulator_output)
     print("Starting local translation watcher...")
-    start_translator()
+    start_translator(emulator_pid)
     update_recent(state, archive)
     print("Launched. The translator is running in a separate console window.")
     print("\nPress any key to return to the launcher.")

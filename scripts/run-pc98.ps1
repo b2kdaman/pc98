@@ -66,4 +66,5 @@ if ($Image) {
     Set-Content -LiteralPath $IniPath -Value $IniText -Encoding Default
 }
 
-Start-Process -FilePath $ExePath -WorkingDirectory $EmulatorDir
+$Process = Start-Process -FilePath $ExePath -WorkingDirectory $EmulatorDir -PassThru
+Write-Output $Process.Id
