@@ -19,7 +19,7 @@ ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name.lower() == "scripts" else SCRIPT_DIR
 CATALOG_DIR = ROOT / "games-rard"
 CACHE_DIR = ROOT / "disks" / "catalog"
 STATE_PATH = ROOT / "launcher-state.json"
-VERSION = "1.0.0"
+VERSION = "1.0.5"
 RECENT_LIMIT = 10
 PAGE_SIZE = 24
 ARCHIVE_EXTENSIONS = {".rar", ".zip"}
