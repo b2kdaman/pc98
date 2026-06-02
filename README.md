@@ -10,9 +10,9 @@ play history.
 
 ## GGUF RAM Warning
 
-The local translation model is memory-hungry. For GGUF translation, 16 GB RAM is
-recommended; 8 GB may work poorly or fail depending on runtime settings and what
-else is running.
+<p style="color: red;"><strong>Warning:</strong> The local translation model is
+memory-hungry. For GGUF translation, 16 GB RAM is recommended; 8 GB may work
+poorly or fail depending on runtime settings and what else is running.</p>
 
 ## Local Layout
 
