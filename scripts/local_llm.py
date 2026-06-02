@@ -64,12 +64,44 @@ def request_json(url, timeout=10):
         return json.loads(response.read().decode("utf-8"))
 
 
+def post_json(url, body, timeout=120):
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def server_reachable(base_url=None):
     try:
         request_json(api_url(base_url or env_base_url(), "/models"), timeout=5)
         return True
     except (OSError, urllib.error.URLError, json.JSONDecodeError):
         return False
+
+
+def warmup_server(base_url=None):
+    base_url = base_url or env_base_url()
+    body = {
+        "model": env_model_id(),
+        "messages": [
+            {
+                "role": "user",
+                "content": "Warm up. Reply with OK.",
+            }
+        ],
+        "max_tokens": 4,
+        "temperature": 0,
+    }
+    print("Warming up local LLM...")
+    try:
+        post_json(api_url(base_url, "/chat/completions"), body, timeout=180)
+        print("Local LLM warmup complete.")
+    except Exception as error:
+        print(f"Local LLM warmup failed, continuing anyway: {error}")
 
 
 def find_llama_server():
@@ -263,6 +295,7 @@ def start_llama_server(base_url=None):
     while time.time() < deadline:
         if server_reachable(base_url):
             print(f"llama-server is ready at {base_url}")
+            warmup_server(base_url)
             return process
         time.sleep(2)
 
@@ -273,6 +306,7 @@ def ensure_ready(base_url=None, dry_run=False):
     base_url = base_url or env_base_url()
     if server_reachable(base_url):
         print(f"Local LLM server already reachable at {base_url}")
+        warmup_server(base_url)
         return
 
     if dry_run:
