@@ -1,0 +1,21 @@
+# Local emulator binaries, firmware, utilities, and extracted starter sets.
+emulator/
+downloads/
+
+# User-owned game/media catalogs and extraction caches.
+games-rard/
+disks/
+
+# Runtime output and local state.
+screenshots/
+launcher-state.json
+*.out
+*.err
+__pycache__/
+*.py[cod]
+
+# Windows/editor noise.
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
