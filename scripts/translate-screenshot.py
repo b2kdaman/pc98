@@ -156,11 +156,12 @@ kernel32.GetModuleHandleW.restype = ctypes.c_void_p
 
 
 class GlobalMouseWheelHook:
-    def __init__(self):
+    def __init__(self, title_hint):
         self.event = threading.Event()
         self.hook = None
         self.thread = None
         self.thread_id = ctypes.c_ulong(0)
+        self.title_hint = title_hint
         self._callback = LowLevelMouseProc(self._handle_mouse)
 
     def start(self):
@@ -198,7 +199,10 @@ class GlobalMouseWheelHook:
 
     def _handle_mouse(self, code, w_param, l_param):
         if code == HC_ACTION and int(w_param) in {WM_MOUSEWHEEL, WM_MOUSEHWHEEL}:
-            self.event.set()
+            mouse = ctypes.cast(l_param, ctypes.POINTER(MouseHookStruct)).contents
+            if point_is_in_emulator_client(mouse.pt.x, mouse.pt.y, self.title_hint):
+                self.event.set()
+                return 1
         return user32.CallNextHookEx(self.hook, code, w_param, l_param)
 
 
@@ -257,6 +261,14 @@ def find_emulator_hwnd_or_none(title_hint):
         return hwnd
     except RuntimeError:
         return None
+
+
+def point_is_in_emulator_client(x, y, title_hint):
+    hwnd = find_emulator_hwnd_or_none(title_hint)
+    if not hwnd:
+        return False
+    left, top, right, bottom = client_bbox(hwnd)
+    return left <= x < right and top <= y < bottom
 
 
 def window_bbox(hwnd):
@@ -527,9 +539,6 @@ class LiveTranslationWindow:
         self.text_box.pack(fill=BOTH, expand=True)
         self.text_box.insert(END, "Scroll here to translate.")
         self.text_box.configure(state="disabled")
-        self.root.bind_all("<MouseWheel>", self.request_translation)
-        self.root.bind_all("<Button-4>", self.request_translation)
-        self.root.bind_all("<Button-5>", self.request_translation)
         self.position_below_emulator()
         self.pump()
 
@@ -657,10 +666,10 @@ def run_once(args):
 
 def run_watch(args):
     print("Waiting for scroll events.")
-    print("Scroll over the emulator, overlay, or anywhere in Windows to translate.")
+    print("Scroll over the emulator window to translate. The wheel event is consumed.")
     print("Press Ctrl+C to stop.\n")
 
-    wheel_hook = GlobalMouseWheelHook()
+    wheel_hook = GlobalMouseWheelHook(args.title)
     wheel_hook.start()
     display = None if args.no_popup else LiveTranslationWindow(args.title)
     next_layout_check = 0.0
@@ -741,7 +750,7 @@ def main():
     parser.add_argument(
         "--watch",
         action="store_true",
-        help="Open the live overlay and translate whenever you scroll it.",
+        help="Open the live overlay and translate when you scroll over the emulator.",
     )
     parser.add_argument("--no-popup", action="store_true", help="Print only.")
     args = parser.parse_args()

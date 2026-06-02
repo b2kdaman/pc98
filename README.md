@@ -61,8 +61,9 @@ Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf
 mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf
 ```
 
-The overlay attaches below the emulator window. Scroll over the emulator,
-overlay, or anywhere in Windows to translate the current emulator screen.
+The overlay attaches below the emulator window. Scroll over the emulator
+window to translate the current emulator screen. The mouse-wheel event is
+consumed so the emulator does not also receive that scroll.
 
 Screenshots are kept in memory and are not saved to disk.
 
