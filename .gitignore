@@ -1,10 +1,13 @@
 # Local emulator binaries, firmware, utilities, and extracted starter sets.
-emulator/
+emulator/*
+!emulator/.gitkeep
 downloads/
 
 # User-owned game/media catalogs and extraction caches.
-games-rard/
-disks/
+games-rard/*
+!games-rard/.gitkeep
+disks/*
+!disks/.gitkeep
 
 # Runtime output and local state.
 screenshots/
