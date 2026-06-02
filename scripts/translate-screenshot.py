@@ -663,10 +663,15 @@ def run_watch(args):
     wheel_hook = GlobalMouseWheelHook()
     wheel_hook.start()
     display = None if args.no_popup else LiveTranslationWindow(args.title)
+    next_layout_check = 0.0
     while True:
         try:
             if display:
                 display.pump()
+                now = time.monotonic()
+                if now >= next_layout_check:
+                    display.position_below_emulator()
+                    next_layout_check = now + 2.0
                 should_translate = (
                     wheel_hook.consume() or display.consume_translation_request()
                 )
@@ -699,6 +704,7 @@ def run_watch(args):
 
             if display:
                 display.update_text(translated)
+                next_layout_check = time.monotonic() + 2.0
         except KeyboardInterrupt:
             print("\nStopped.")
             wheel_hook.stop()
