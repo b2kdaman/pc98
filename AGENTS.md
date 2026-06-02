@@ -53,11 +53,12 @@ Both live under ignored `models/` by default. The launcher may stop only the
 server owned by the user.
 
 The launcher should start `llama-server` with GPU offload when a device is
-available. Device selection is automatic by default, preferring CUDA, then
-NVIDIA/Vulkan, then the first reported device. Respect `LOCAL_LLM_DEVICE`,
-`LOCAL_LLM_GPU_LAYERS`, `LOCAL_LLM_SERVER_PATH`, and `LOCAL_LLM_SERVER_ARGS`
-overrides. The winget package may expose Vulkan rather than CUDA; do not claim
-CUDA is active unless the selected `llama-server` reports CUDA devices.
+available. It prefers ignored local CUDA runtime
+`runtimes\llama-cuda\llama-server.exe` over winget when present. Device
+selection is automatic by default, preferring CUDA, then NVIDIA/Vulkan, then the
+first reported device. Respect `LOCAL_LLM_DEVICE`, `LOCAL_LLM_GPU_LAYERS`,
+`LOCAL_LLM_SERVER_PATH`, and `LOCAL_LLM_SERVER_ARGS` overrides. Do not commit
+runtime DLLs/exes under `runtimes/`.
 
 ## UI Conventions
 

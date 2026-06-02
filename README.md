@@ -155,9 +155,10 @@ python scripts\translate-screenshot.py --watch
 By default, the launcher asks `llama-server` for available devices and starts
 with GPU offload when one is available. It prefers CUDA devices when the
 installed binary exposes them, then NVIDIA/Vulkan devices, then the first
-reported GPU device. The winget `llama.cpp` package may expose Vulkan devices
-instead of CUDA devices; set `LOCAL_LLM_SERVER_PATH` to a CUDA-enabled
-`llama-server.exe` if you want the CUDA backend specifically. Set
+reported GPU device. If `runtimes\llama-cuda\llama-server.exe` exists, it is
+preferred over the winget binary. The winget `llama.cpp` package may expose
+Vulkan devices instead of CUDA devices; set `LOCAL_LLM_SERVER_PATH` to another
+CUDA-enabled `llama-server.exe` if you want to override the local runtime. Set
 `LOCAL_LLM_DEVICE=none` to force CPU mode.
 
 Manual runtime checks:

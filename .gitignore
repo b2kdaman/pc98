@@ -10,6 +10,7 @@ disks/*
 !disks/.gitkeep
 models/*
 !models/.gitkeep
+runtimes/*
 
 # Runtime output and local state.
 screenshots/

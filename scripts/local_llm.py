@@ -15,6 +15,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name.lower() == "scripts" else SCRIPT_DIR
 MODELS_DIR = ROOT / "models"
+LOCAL_CUDA_RUNTIME_DIR = ROOT / "runtimes" / "llama-cuda"
+LOCAL_CUDA_SERVER = LOCAL_CUDA_RUNTIME_DIR / "llama-server.exe"
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1"
 DEFAULT_MODEL_ID = "local-gemma-gguf"
@@ -126,6 +128,9 @@ def find_llama_server():
     configured = env_llama_server_path()
     if configured:
         return configured
+
+    if LOCAL_CUDA_SERVER.exists():
+        return str(LOCAL_CUDA_SERVER)
 
     found = shutil.which("llama-server")
     if found:
@@ -416,6 +421,8 @@ def main():
 
     if args.command == "status":
         print(f"llama-server: {find_llama_server() or 'not found'}")
+        print(f"local CUDA server: {LOCAL_CUDA_SERVER}")
+        print(f"local CUDA server present: {LOCAL_CUDA_SERVER.exists()}")
         print(f"model: {env_model_path()}")
         print(f"model present: {model_is_present()}")
         print(f"mmproj: {env_mmproj_path()}")
