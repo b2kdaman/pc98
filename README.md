@@ -143,10 +143,22 @@ Optional local LLM settings:
 ```powershell
 set LOCAL_LLM_BASE_URL=http://127.0.0.1:8080/v1
 set LOCAL_LLM_MODEL=local-gemma-gguf
+set LOCAL_LLM_SERVER_PATH=C:\path\to\cuda\llama-server.exe
 set LOCAL_LLM_MODEL_PATH=C:\path\to\model.gguf
 set LOCAL_LLM_MMPROJ_PATH=C:\path\to\mmproj.gguf
+set LOCAL_LLM_DEVICE=Vulkan0
+set LOCAL_LLM_GPU_LAYERS=all
+set LOCAL_LLM_SERVER_ARGS=--ctx-size 4096
 python scripts\translate-screenshot.py --watch
 ```
+
+By default, the launcher asks `llama-server` for available devices and starts
+with GPU offload when one is available. It prefers CUDA devices when the
+installed binary exposes them, then NVIDIA/Vulkan devices, then the first
+reported GPU device. The winget `llama.cpp` package may expose Vulkan devices
+instead of CUDA devices; set `LOCAL_LLM_SERVER_PATH` to a CUDA-enabled
+`llama-server.exe` if you want the CUDA backend specifically. Set
+`LOCAL_LLM_DEVICE=none` to force CPU mode.
 
 Manual runtime checks:
 

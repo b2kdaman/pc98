@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -54,6 +55,23 @@ def env_model_id():
     return os.environ.get("LOCAL_LLM_MODEL", DEFAULT_MODEL_ID)
 
 
+def env_llama_server_path():
+    value = os.environ.get("LOCAL_LLM_SERVER_PATH")
+    return str(Path(value)) if value else None
+
+
+def env_llm_device():
+    return os.environ.get("LOCAL_LLM_DEVICE")
+
+
+def env_gpu_layers():
+    return os.environ.get("LOCAL_LLM_GPU_LAYERS", "all")
+
+
+def env_extra_args():
+    return shlex.split(os.environ.get("LOCAL_LLM_SERVER_ARGS", ""))
+
+
 def api_url(base_url, path):
     return base_url.rstrip("/") + "/" + path.lstrip("/")
 
@@ -105,6 +123,10 @@ def warmup_server(base_url=None):
 
 
 def find_llama_server():
+    configured = env_llama_server_path()
+    if configured:
+        return configured
+
     found = shutil.which("llama-server")
     if found:
         return found
@@ -123,6 +145,57 @@ def find_llama_server():
             if matches:
                 return str(matches[0])
     return None
+
+
+def list_llama_device_entries(llama_server=None):
+    llama_server = llama_server or find_llama_server()
+    if not llama_server:
+        return []
+
+    try:
+        result = subprocess.run(
+            [llama_server, "--list-devices"],
+            text=True,
+            capture_output=True,
+            cwd=ROOT,
+        )
+    except OSError:
+        return []
+
+    output = (result.stdout or "") + "\n" + (result.stderr or "")
+    devices = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped or ":" not in stripped:
+            continue
+        name = stripped.split(":", 1)[0].strip()
+        if name.lower() == "available devices":
+            continue
+        devices.append((name, stripped))
+    return devices
+
+
+def list_llama_devices(llama_server=None):
+    return [name for name, _description in list_llama_device_entries(llama_server)]
+
+
+def choose_llm_device(llama_server=None):
+    configured = env_llm_device()
+    if configured:
+        return None if configured.lower() in {"none", "cpu", "off"} else configured
+
+    devices = list_llama_device_entries(llama_server)
+    if not devices:
+        return None
+
+    for name, description in devices:
+        if "cuda" in description.lower():
+            return name
+    for name, description in devices:
+        lower = description.lower()
+        if "nvidia" in lower or name.lower().startswith("vulkan0"):
+            return name
+    return devices[0][0]
 
 
 def install_llama_cpp():
@@ -287,6 +360,21 @@ def start_llama_server(base_url=None):
         "--alias",
         env_model_id(),
     ]
+    device = choose_llm_device(llama_server)
+    if device:
+        command.extend(
+            [
+                "--device",
+                device,
+                "--n-gpu-layers",
+                env_gpu_layers(),
+                "--mmproj-offload",
+            ]
+        )
+        print(f"Using local LLM GPU device: {device}")
+    else:
+        print("No llama.cpp GPU device detected; local LLM will run on CPU.")
+    command.extend(env_extra_args())
     creation_flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
     process = subprocess.Popen(command, cwd=ROOT, creationflags=creation_flags)
 
@@ -332,6 +420,9 @@ def main():
         print(f"model present: {model_is_present()}")
         print(f"mmproj: {env_mmproj_path()}")
         print(f"mmproj present: {mmproj_is_present()}")
+        print(f"devices: {', '.join(list_llama_devices()) or 'none'}")
+        print(f"selected device: {choose_llm_device() or 'CPU'}")
+        print(f"gpu layers: {env_gpu_layers()}")
         print(f"server reachable: {server_reachable(args.base_url)}")
         return 0
     if args.command == "download":
