@@ -172,6 +172,7 @@ Manual runtime checks:
 python scripts\local_llm.py status
 python scripts\local_llm.py download --dry-run
 python scripts\local_llm.py ensure
+python scripts\translate-screenshot.py --once --no-popup --image .\path\to\screenshot.png
 ```
 
 The local LLM request uses structured JSON with:

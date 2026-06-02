@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 from tkinter import BOTH, END, RIGHT, Y, Frame, Scrollbar, Text, Tk, TclError
 
-from PIL import ImageGrab
+from PIL import Image, ImageGrab
 import local_llm
 
 
@@ -520,6 +520,14 @@ def translate_with_local_llm(image, target_language, model, base_url, api_key):
     prompt = (
         "This is a screenshot from a Japanese PC-98 game. OCR any visible Japanese "
         "text, translate it into {language}, and keep the answer concise. "
+        "If this is a UI/menu/name-entry screen with a kana grid, command labels, "
+        "or an entered name field, translate the UI labels and the active entered "
+        "text instead of treating the character grid as prose. Preserve short UI "
+        "groups with line breaks when useful. Never list individual kana from a "
+        "kana or symbol picker in translatedText; use one short line such as "
+        "'Character selection grid' instead. Keep sourceText concise for UI "
+        "screens, prioritizing active input text and command labels. Ignore "
+        "emulator window chrome and desktop application text. "
         "Also estimate the dominant text-box background color and text foreground "
         "color from the area containing the source text. Use #RRGGBB hex colors. "
         "If there is no readable Japanese text, say that no readable text was found. "
@@ -549,7 +557,7 @@ def translate_with_local_llm(image, target_language, model, base_url, api_key):
             },
         },
         "temperature": 0.1,
-        "max_tokens": 900,
+        "max_tokens": 1400,
     }
 
     payload = request_json(
@@ -760,8 +768,12 @@ class LiveTranslationWindow:
 
 
 def run_once(args):
-    image, title = capture_window(args.title)
-    print(f"Captured {title} in memory")
+    if args.image:
+        image = Image.open(args.image).convert("RGB")
+        print(f"Loaded {args.image} in memory")
+    else:
+        image, title = capture_window(args.title)
+        print(f"Captured {title} in memory")
     print("Sending screenshot to local LLM for translation...")
     translated = translate_with_local_llm(
         image,
@@ -872,6 +884,10 @@ def main():
         "--api-key",
         default=os.environ.get("LOCAL_LLM_API_KEY"),
         help="Optional local LLM API token, if your server requires authentication.",
+    )
+    parser.add_argument(
+        "--image",
+        help="Translate this image file instead of capturing the emulator window.",
     )
     parser.add_argument("--once", action="store_true", help="Capture once and exit.")
     parser.add_argument(
