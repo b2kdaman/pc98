@@ -19,11 +19,17 @@ DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1"
 DEFAULT_MODEL_ID = "local-gemma-gguf"
 MODEL_REPO = "HauhauCS/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive"
 MODEL_FILENAME = "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf"
+MMPROJ_FILENAME = "mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf"
 MODEL_URL = (
     "https://huggingface.co/"
     f"{MODEL_REPO}/resolve/main/{MODEL_FILENAME}?download=true"
 )
+MMPROJ_URL = (
+    "https://huggingface.co/"
+    f"{MODEL_REPO}/resolve/main/{MMPROJ_FILENAME}?download=true"
+)
 MODEL_MIN_BYTES = 5_000_000_000
+MMPROJ_MIN_BYTES = 900_000_000
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -38,6 +44,10 @@ def env_base_url():
 
 def env_model_path():
     return Path(os.environ.get("LOCAL_LLM_MODEL_PATH", MODELS_DIR / MODEL_FILENAME))
+
+
+def env_mmproj_path():
+    return Path(os.environ.get("LOCAL_LLM_MMPROJ_PATH", MODELS_DIR / MMPROJ_FILENAME))
 
 
 def env_model_id():
@@ -106,25 +116,34 @@ def install_llama_cpp():
     raise RuntimeError(f"llama.cpp installation did not expose llama-server.\n{last_error}")
 
 
+def file_is_present(path, min_bytes):
+    file_path = Path(path)
+    return file_path.exists() and file_path.stat().st_size >= min_bytes
+
+
 def model_is_present(path=None):
     model_path = Path(path or env_model_path())
-    return model_path.exists() and model_path.stat().st_size >= MODEL_MIN_BYTES
+    return file_is_present(model_path, MODEL_MIN_BYTES)
 
 
-def download_model(dry_run=False):
-    model_path = env_model_path()
-    url = os.environ.get("LOCAL_LLM_MODEL_URL", MODEL_URL)
-    model_path.parent.mkdir(parents=True, exist_ok=True)
+def mmproj_is_present(path=None):
+    mmproj_path = Path(path or env_mmproj_path())
+    return file_is_present(mmproj_path, MMPROJ_MIN_BYTES)
 
-    if model_is_present(model_path):
-        print(f"Model already present: {model_path}")
-        return model_path
+
+def download_large_file(url, destination, min_bytes, label, dry_run=False):
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    if file_is_present(destination, min_bytes):
+        print(f"{label} already present: {destination}")
+        return destination
 
     if dry_run:
-        print(f"Would download:\n  {url}\ninto:\n  {model_path}")
-        return model_path
+        print(f"Would download {label}:\n  {url}\ninto:\n  {destination}")
+        return destination
 
-    partial_path = model_path.with_suffix(model_path.suffix + ".part")
+    partial_path = destination.with_suffix(destination.suffix + ".part")
     existing_size = partial_path.stat().st_size if partial_path.exists() else 0
     headers = {}
     mode = "wb"
@@ -132,8 +151,7 @@ def download_model(dry_run=False):
         headers["Range"] = f"bytes={existing_size}-"
         mode = "ab"
 
-    print(f"Downloading GGUF model to {model_path}")
-    print("This is a large file, about 5.34 GB.")
+    print(f"Downloading {label} to {destination}")
 
     request = urllib.request.Request(url, headers=headers)
     try:
@@ -164,19 +182,45 @@ def download_model(dry_run=False):
                             print(f"Downloaded {downloaded / 1_000_000_000:.2f} GB")
                         last_report = now
     except urllib.error.HTTPError as error:
-        if existing_size and error.code == 416 and model_is_present(partial_path):
+        if existing_size and error.code == 416 and file_is_present(partial_path, min_bytes):
             pass
         else:
             raise
 
-    if partial_path.stat().st_size < MODEL_MIN_BYTES:
+    if partial_path.stat().st_size < min_bytes:
         raise RuntimeError(
-            f"Downloaded model is unexpectedly small: {partial_path.stat().st_size} bytes"
+            f"Downloaded {label} is unexpectedly small: {partial_path.stat().st_size} bytes"
         )
 
-    partial_path.replace(model_path)
-    print(f"Model ready: {model_path}")
-    return model_path
+    partial_path.replace(destination)
+    print(f"{label} ready: {destination}")
+    return destination
+
+
+def download_model(dry_run=False):
+    return download_large_file(
+        os.environ.get("LOCAL_LLM_MODEL_URL", MODEL_URL),
+        env_model_path(),
+        MODEL_MIN_BYTES,
+        "model GGUF",
+        dry_run=dry_run,
+    )
+
+
+def download_mmproj(dry_run=False):
+    return download_large_file(
+        os.environ.get("LOCAL_LLM_MMPROJ_URL", MMPROJ_URL),
+        env_mmproj_path(),
+        MMPROJ_MIN_BYTES,
+        "mmproj GGUF",
+        dry_run=dry_run,
+    )
+
+
+def download_assets(dry_run=False):
+    model_path = download_model(dry_run=dry_run)
+    mmproj_path = download_mmproj(dry_run=dry_run)
+    return model_path, mmproj_path
 
 
 def parse_host_port(base_url):
@@ -192,7 +236,7 @@ def start_llama_server(base_url=None):
         return None
 
     install_llama_cpp()
-    model_path = download_model()
+    model_path, mmproj_path = download_assets()
     llama_server = find_llama_server()
     if not llama_server:
         raise RuntimeError("llama-server was not found after installation.")
@@ -202,6 +246,8 @@ def start_llama_server(base_url=None):
         llama_server,
         "-m",
         str(model_path),
+        "--mmproj",
+        str(mmproj_path),
         "--host",
         host,
         "--port",
@@ -233,6 +279,7 @@ def ensure_ready(base_url=None, dry_run=False):
         print("Local LLM server is not reachable.")
         print(f"Would ensure llama.cpp, model, and llama-server for {base_url}")
         print(f"Model path: {env_model_path()}")
+        print(f"mmproj path: {env_mmproj_path()}")
         return
 
     start_llama_server(base_url)
@@ -249,10 +296,12 @@ def main():
         print(f"llama-server: {find_llama_server() or 'not found'}")
         print(f"model: {env_model_path()}")
         print(f"model present: {model_is_present()}")
+        print(f"mmproj: {env_mmproj_path()}")
+        print(f"mmproj present: {mmproj_is_present()}")
         print(f"server reachable: {server_reachable(args.base_url)}")
         return 0
     if args.command == "download":
-        download_model(dry_run=args.dry_run)
+        download_assets(dry_run=args.dry_run)
         return 0
     if args.command == "ensure":
         ensure_ready(args.base_url, dry_run=args.dry_run)

@@ -50,14 +50,15 @@ The catalog launcher:
 
 LM Studio is not required. On game launch, the app checks for `llama-server`,
 installs `llama.cpp` with `winget` if needed, downloads the Gemma Q4_K_M GGUF
-model into `models/`, starts a local OpenAI-compatible server, and opens the
-translation overlay.
+model plus its multimodal projection file into `models/`, starts a local
+OpenAI-compatible server, and opens the translation overlay.
 
-The first game launch may download about 5.34 GB:
+The first game launch may download about 6.33 GB:
 
 ```text
 HauhauCS/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive
 Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf
+mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf
 ```
 
 The overlay attaches below the emulator window. Scroll over the emulator,
@@ -71,6 +72,7 @@ Optional local LLM settings:
 set LOCAL_LLM_BASE_URL=http://127.0.0.1:8080/v1
 set LOCAL_LLM_MODEL=local-gemma-gguf
 set LOCAL_LLM_MODEL_PATH=C:\path\to\model.gguf
+set LOCAL_LLM_MMPROJ_PATH=C:\path\to\mmproj.gguf
 python scripts\translate-screenshot.py --watch
 ```
 
