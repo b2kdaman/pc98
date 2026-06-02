@@ -22,6 +22,68 @@ models/        Local GGUF model cache
 The root `game-launcher.bat` is the main entrypoint. Implementation scripts live
 under `scripts/`.
 
+## Current Emulator Folder Tree
+
+The local `emulator/` folder is ignored by git except for `.gitkeep`. A working
+local setup currently looks like this:
+
+```text
+emulator/
+|-- .gitkeep
+|-- fdosboot.hdi
+|-- font.tmp
+|-- np2.chm
+|-- np21w.exe
+|-- np21w.ini
+|-- np21x64w.exe
+|-- np21x64w.ini
+|-- np2w.exe
+|-- np2x64w.exe
+|-- readme-starter.txt
+|-- language/
+|   |-- np2_1252.dll
+|   |-- np2_932.dll
+|   |-- np2x64_1252.dll
+|   |-- np2x64_932.dll
+|   `-- readme.txt
+|-- LICENSES/
+|   |-- LICENSE*.TXT
+|   |-- fmgen/
+|   |-- mamebsd/
+|   `-- softfloat3/
+`-- share/
+    |-- AUTOEXEC.BAT
+    |-- COMMAND.COM
+    |-- COUNTRY.SYS
+    |-- KERNEL.SYS
+    |-- KWC18632.SYS
+    |-- KWC8616.SYS
+    |-- README.BAT
+    |-- READMEJA.HTM
+    |-- FDOS/
+    |   |-- BIN/
+    |   |-- DOC/
+    |   |-- HELP/
+    |   |-- NLS/
+    |   `-- SOURCE/
+    |-- NP2TOOLS/
+    |   |-- NPCC/
+    |   |-- NPCG/
+    |   |-- NPCPCI/
+    |   `-- NPCS/
+    |-- OPT/
+    |   |-- BIN/
+    |   |-- DOC/
+    |   |-- HELP/
+    |   `-- SOURCE/
+    `-- VZ/
+        |-- 30BIOS/
+        |-- J31/
+        |-- MISC/
+        |-- SRC/
+        `-- WIN/
+```
+
 ## Run
 
 Browse and launch games from `games-rard/`:
