@@ -14,11 +14,12 @@ from pathlib import Path
 from tkinter import BOTH, END, Frame, Text, Tk, TclError
 
 from PIL import ImageGrab
+import local_llm
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name.lower() == "scripts" else SCRIPT_DIR
-DEFAULT_LMSTUDIO_BASE_URL = "http://localhost:1234/v1"
+DEFAULT_LOCAL_LLM_BASE_URL = local_llm.DEFAULT_BASE_URL
 TRANSLATION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -329,31 +330,34 @@ def request_json(url, body=None, api_key=None, timeout=90):
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         details = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"LM Studio API error {error.code}:\n{details}") from error
+        raise RuntimeError(f"Local LLM API error {error.code}:\n{details}") from error
     except urllib.error.URLError as error:
         raise RuntimeError(
-            "Could not reach LM Studio. Start the LM Studio local server from the "
-            "Developer tab, or run `lms server start`, then try again.\n"
+            "Could not reach the local LLM server. The launcher normally starts "
+            "llama-server automatically; if you ran this directly, run "
+            "`python scripts\\local_llm.py ensure` first.\n"
             f"Endpoint: {url}\n"
             f"Details: {error.reason}"
         ) from error
 
 
-def choose_lmstudio_model(base_url, api_key, requested_model):
+def choose_local_model(base_url, api_key, requested_model):
     if requested_model:
         return requested_model
+
+    if not local_llm.server_reachable(base_url):
+        local_llm.ensure_ready(base_url)
 
     payload = request_json(api_url(base_url, "/models"), api_key=api_key, timeout=10)
     models = payload.get("data", [])
     if not models:
         raise RuntimeError(
-            "LM Studio is running, but it did not report any loaded models. "
-            "Load a vision-language model in LM Studio, then try again."
+            "llama-server is running, but it did not report any loaded models."
         )
 
     model_id = models[0].get("id") or models[0].get("model") or models[0].get("name")
     if not model_id:
-        raise RuntimeError(f"Could not read a model id from LM Studio /v1/models: {models[0]}")
+        raise RuntimeError(f"Could not read a model id from /v1/models: {models[0]}")
 
     return model_id
 
@@ -408,8 +412,8 @@ def format_translation(raw_text):
     }
 
 
-def translate_with_lmstudio(image, target_language, model, base_url, api_key):
-    selected_model = choose_lmstudio_model(base_url, api_key, model)
+def translate_with_local_llm(image, target_language, model, base_url, api_key):
+    selected_model = choose_local_model(base_url, api_key, model)
 
     prompt = (
         "This is a screenshot from a Japanese PC-98 game. OCR any visible Japanese "
@@ -637,8 +641,8 @@ class LiveTranslationWindow:
 def run_once(args):
     image, title = capture_window(args.title)
     print(f"Captured {title} in memory")
-    print("Sending screenshot to LM Studio for translation...")
-    translated = translate_with_lmstudio(
+    print("Sending screenshot to local LLM for translation...")
+    translated = translate_with_local_llm(
         image,
         args.language,
         args.model,
@@ -683,8 +687,8 @@ def run_watch(args):
                 display.show_waiting()
 
             print(f"Scroll event received in {title}; translating")
-            print("Sending screenshot to LM Studio for translation...")
-            translated = translate_with_lmstudio(
+            print("Sending screenshot to local LLM for translation...")
+            translated = translate_with_local_llm(
                 image,
                 args.language,
                 args.model,
@@ -701,7 +705,7 @@ def run_watch(args):
             return
         except Exception as error:
             print(f"\nError: {error}\n", file=sys.stderr)
-            time.sleep(args.interval)
+            time.sleep(1)
 
 
 def main():
@@ -714,18 +718,18 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default=os.environ.get("LMSTUDIO_MODEL"),
-        help="LM Studio model identifier. Defaults to the first model returned by /v1/models.",
+        default=os.environ.get("LOCAL_LLM_MODEL"),
+        help="Local LLM model identifier. Defaults to the first model returned by /v1/models.",
     )
     parser.add_argument(
         "--base-url",
-        default=os.environ.get("LMSTUDIO_BASE_URL", DEFAULT_LMSTUDIO_BASE_URL),
-        help="LM Studio OpenAI-compatible base URL.",
+        default=os.environ.get("LOCAL_LLM_BASE_URL", DEFAULT_LOCAL_LLM_BASE_URL),
+        help="Local llama-server OpenAI-compatible base URL.",
     )
     parser.add_argument(
         "--api-key",
-        default=os.environ.get("LMSTUDIO_API_KEY"),
-        help="Optional LM Studio API token, if you enabled authentication.",
+        default=os.environ.get("LOCAL_LLM_API_KEY"),
+        help="Optional local LLM API token, if your server requires authentication.",
     )
     parser.add_argument("--once", action="store_true", help="Capture once and exit.")
     parser.add_argument(

@@ -10,6 +10,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import local_llm
+
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name.lower() == "scripts" else SCRIPT_DIR
@@ -393,8 +395,10 @@ def launch_archive(archive, state):
     if extra_count > 0:
         print(f"{extra_count} additional image(s) remain in the cache for manual swapping.")
 
+    print("Preparing local GGUF translation runtime...")
+    local_llm.ensure_ready()
     run_powershell_script(SCRIPT_DIR / "run-pc98.ps1", ["-Image", *selected_images])
-    print("Starting LM Studio translation watcher...")
+    print("Starting local translation watcher...")
     start_translator()
     update_recent(state, archive)
     print("Launched. The translator is running in a separate console window.")

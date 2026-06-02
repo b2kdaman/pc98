@@ -8,6 +8,8 @@ games-rard/*
 !games-rard/.gitkeep
 disks/*
 !disks/.gitkeep
+models/*
+!models/.gitkeep
 
 # Runtime output and local state.
 screenshots/

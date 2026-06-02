@@ -2,7 +2,7 @@
 
 Small Windows launcher for a local PC-98 emulator setup. It scans a user-owned
 RAR catalog, extracts selected games into a local cache, launches Neko Project
-21/W, and opens an LM Studio-powered translation overlay.
+21/W, and opens a local GGUF-powered translation overlay.
 
 This repository intentionally does not include emulator binaries, BIOS ROMs,
 commercial game archives, disk images, extracted media, screenshots, or local
@@ -16,6 +16,7 @@ Create or keep these folders next to the scripts:
 emulator/      Neko Project 21/W files, including np21x64w.exe and np21x64w.ini
 games-rard/    Your legally obtained .rar game catalog
 disks/         Local extraction cache and your own disk images
+models/        Local GGUF model cache
 ```
 
 The root `game-launcher.bat` is the main entrypoint. Implementation scripts live
@@ -47,21 +48,41 @@ The catalog launcher:
 
 ## Translation Overlay
 
-Start LM Studio's local server, load a vision-language model, then launch a
-game. The overlay attaches below the emulator window. Scroll over the emulator,
+LM Studio is not required. On game launch, the app checks for `llama-server`,
+installs `llama.cpp` with `winget` if needed, downloads the Gemma Q4_K_M GGUF
+model into `models/`, starts a local OpenAI-compatible server, and opens the
+translation overlay.
+
+The first game launch may download about 5.34 GB:
+
+```text
+HauhauCS/Gemma-4-E4B-Uncensored-HauhauCS-Aggressive
+Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf
+```
+
+The overlay attaches below the emulator window. Scroll over the emulator,
 overlay, or anywhere in Windows to translate the current emulator screen.
 
 Screenshots are kept in memory and are not saved to disk.
 
-Optional LM Studio settings:
+Optional local LLM settings:
 
 ```powershell
-set LMSTUDIO_BASE_URL=http://localhost:1234/v1
-set LMSTUDIO_MODEL=your-loaded-vision-model-id
+set LOCAL_LLM_BASE_URL=http://127.0.0.1:8080/v1
+set LOCAL_LLM_MODEL=local-gemma-gguf
+set LOCAL_LLM_MODEL_PATH=C:\path\to\model.gguf
 python scripts\translate-screenshot.py --watch
 ```
 
-The LM Studio request uses structured JSON with:
+Manual runtime checks:
+
+```powershell
+python scripts\local_llm.py status
+python scripts\local_llm.py download --dry-run
+python scripts\local_llm.py ensure
+```
+
+The local LLM request uses structured JSON with:
 
 - `sourceLanguage`
 - `targetLanguage`
