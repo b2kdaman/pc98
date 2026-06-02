@@ -307,16 +307,16 @@ def ensure_ready(base_url=None, dry_run=False):
     if server_reachable(base_url):
         print(f"Local LLM server already reachable at {base_url}")
         warmup_server(base_url)
-        return
+        return None
 
     if dry_run:
         print("Local LLM server is not reachable.")
         print(f"Would ensure llama.cpp, model, and llama-server for {base_url}")
         print(f"Model path: {env_model_path()}")
         print(f"mmproj path: {env_mmproj_path()}")
-        return
+        return None
 
-    start_llama_server(base_url)
+    return start_llama_server(base_url)
 
 
 def main():

@@ -5,6 +5,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -303,6 +304,26 @@ def emulator_is_running(title_hint, emulator_pid):
     if emulator_pid:
         return process_is_running(emulator_pid)
     return find_emulator_hwnd_or_none(title_hint) is not None
+
+
+def stop_managed_processes(pids):
+    for pid in pids or []:
+        if not process_is_running(pid):
+            continue
+
+        print(f"Stopping managed process {pid}.")
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        else:
+            try:
+                os.kill(pid, 15)
+            except OSError:
+                pass
 
 
 def window_bbox(hwnd):
@@ -791,6 +812,7 @@ def run_watch(args):
         mouse_hook.stop()
         if display:
             display.close()
+        stop_managed_processes(args.managed_process_pid)
 
 
 def main():
@@ -827,6 +849,13 @@ def main():
         type=int,
         default=None,
         help="Exit the watcher when this emulator process id is no longer running.",
+    )
+    parser.add_argument(
+        "--managed-process-pid",
+        type=int,
+        action="append",
+        default=[],
+        help="Process id started by the launcher to stop when the watcher exits.",
     )
     parser.add_argument("--no-popup", action="store_true", help="Print only.")
     args = parser.parse_args()

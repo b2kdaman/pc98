@@ -277,10 +277,12 @@ def extract_process_id(output):
     return None
 
 
-def start_translator(emulator_pid=None):
+def start_translator(emulator_pid=None, managed_process_pids=None):
     command = [sys.executable, str(SCRIPT_DIR / "translate-screenshot.py"), "--watch"]
     if emulator_pid:
         command.extend(["--emulator-pid", str(emulator_pid)])
+    for pid in managed_process_pids or []:
+        command.extend(["--managed-process-pid", str(pid)])
     creation_flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
     return subprocess.Popen(command, cwd=ROOT, creationflags=creation_flags)
 
@@ -410,14 +412,15 @@ def launch_archive(archive, state):
         print(f"{extra_count} additional image(s) remain in the cache for manual swapping.")
 
     print("Preparing local GGUF translation runtime...")
-    local_llm.ensure_ready()
+    local_llm_process = local_llm.ensure_ready()
     emulator_output = run_powershell_script(
         SCRIPT_DIR / "run-pc98.ps1",
         ["-Image", *selected_images],
     )
     emulator_pid = extract_process_id(emulator_output)
     print("Starting local translation watcher...")
-    start_translator(emulator_pid)
+    managed_process_pids = [local_llm_process.pid] if local_llm_process else []
+    start_translator(emulator_pid, managed_process_pids)
     update_recent(state, archive)
     print("Launched. The translator is running in a separate console window.")
     print("\nPress any key to return to the launcher.")
