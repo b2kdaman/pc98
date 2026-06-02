@@ -74,13 +74,14 @@ class Color:
     reset = "\033[0m"
     bold = "\033[1m"
     dim = "\033[2m"
-    cyan = "\033[96m"
+    cyan = "\033[36m"
+    bright_cyan = "\033[96m"
     magenta = "\033[95m"
     yellow = "\033[93m"
     green = "\033[92m"
     red = "\033[91m"
     white = "\033[97m"
-    selected = "\033[30;46m"
+    selected = "\033[30;103m"
 
 
 USE_COLOR = False
@@ -138,7 +139,7 @@ def paint(text, *codes):
 
 
 def accent(text):
-    return paint(text, Color.cyan, Color.bold)
+    return paint(text, Color.bright_cyan, Color.bold)
 
 
 def friendly_name(path):
