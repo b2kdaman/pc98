@@ -64,6 +64,8 @@ mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf
 The overlay attaches below the emulator window. Right-click over the emulator
 window to translate the current emulator screen. The right-click event is
 consumed so the emulator does not also receive that click.
+The translation overlay has its own scrollbar; scrolling the overlay only moves
+the translated text and does not trigger a new translation.
 
 Screenshots are kept in memory and are not saved to disk.
 

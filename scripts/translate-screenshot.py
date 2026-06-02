@@ -11,7 +11,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from tkinter import BOTH, END, Frame, Text, Tk, TclError
+from tkinter import BOTH, END, RIGHT, Y, Frame, Scrollbar, Text, Tk, TclError
 
 from PIL import ImageGrab
 import local_llm
@@ -489,6 +489,8 @@ def show_translation(result):
     frame = Frame(root, bg=background)
     frame.pack(fill=BOTH, expand=True)
 
+    scrollbar = Scrollbar(frame)
+    scrollbar.pack(side=RIGHT, fill=Y)
     text_box = Text(
         frame,
         wrap="word",
@@ -500,8 +502,10 @@ def show_translation(result):
         borderwidth=0,
         padx=16,
         pady=16,
+        yscrollcommand=scrollbar.set,
     )
     text_box.pack(fill=BOTH, expand=True)
+    scrollbar.configure(command=text_box.yview)
     text_box.insert(END, text)
     text_box.configure(state="disabled")
 
@@ -523,6 +527,8 @@ class LiveTranslationWindow:
         self.frame = Frame(self.root, bg=self.current_style["backgroundColor"])
         self.frame.pack(fill=BOTH, expand=True)
 
+        self.scrollbar = Scrollbar(self.frame)
+        self.scrollbar.pack(side=RIGHT, fill=Y)
         self.text_box = Text(
             self.frame,
             wrap="word",
@@ -534,10 +540,15 @@ class LiveTranslationWindow:
             borderwidth=0,
             padx=16,
             pady=16,
+            yscrollcommand=self.scrollbar.set,
         )
         self.text_box.pack(fill=BOTH, expand=True)
+        self.scrollbar.configure(command=self.text_box.yview)
         self.text_box.insert(END, "Right-click the emulator to translate.")
         self.text_box.configure(state="disabled")
+        self.text_box.bind("<MouseWheel>", self.scroll_translation)
+        self.text_box.bind("<Button-4>", self.scroll_translation)
+        self.text_box.bind("<Button-5>", self.scroll_translation)
         self.position_below_emulator()
         self.pump()
 
@@ -584,6 +595,17 @@ class LiveTranslationWindow:
         requested = self.translate_requested
         self.translate_requested = False
         return requested
+
+    def scroll_translation(self, event):
+        if getattr(event, "num", None) == 4:
+            delta = -3
+        elif getattr(event, "num", None) == 5:
+            delta = 3
+        else:
+            delta = -1 * int(event.delta / 120) if event.delta else 0
+        if delta:
+            self.text_box.yview_scroll(delta, "units")
+        return "break"
 
     def apply_style(self, style):
         normalized = normalize_style(style)
