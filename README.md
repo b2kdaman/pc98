@@ -8,6 +8,23 @@ This repository intentionally does not include emulator binaries, BIOS ROMs,
 commercial game archives, disk images, extracted media, screenshots, or local
 play history.
 
+## Minimum Requirements
+
+Warning: the translation workflow is heavier than the launcher itself. First
+launch can download about 6.33 GB of model files, and extracted games plus local
+models are kept on disk.
+
+- Windows 10/11.
+- Python 3.10 or newer available as `python`.
+- `winget` available if you want the launcher to auto-install `llama.cpp`.
+- Windows `tar` available for `.rar`/`.zip` extraction.
+- A local Neko Project 21/W emulator setup in `emulator/`.
+- Your legally obtained `.rar`/`.zip` PC-98 game catalog in `games-rard/`.
+- At least 10 GB free disk space for models and extraction cache; more is
+  recommended for a large catalog.
+- 16 GB RAM recommended for local GGUF translation; 8 GB may work poorly or fail
+  depending on model/runtime settings.
+
 ## Local Layout
 
 Create or keep these folders next to the scripts:
