@@ -16,7 +16,8 @@ from tkinter import BOTH, END, Frame, Text, Tk, TclError
 from PIL import ImageGrab
 
 
-ROOT = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name.lower() == "scripts" else SCRIPT_DIR
 DEFAULT_LMSTUDIO_BASE_URL = "http://localhost:1234/v1"
 TRANSLATION_SCHEMA = {
     "type": "object",

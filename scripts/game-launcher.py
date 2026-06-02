@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent if SCRIPT_DIR.name.lower() == "scripts" else SCRIPT_DIR
 CATALOG_DIR = ROOT / "games-rard"
 CACHE_DIR = ROOT / "disks" / "catalog"
 STATE_PATH = ROOT / "launcher-state.json"
@@ -263,7 +264,7 @@ def run_powershell_script(script_path, args=None):
 
 
 def start_translator():
-    command = [sys.executable, str(ROOT / "translate-screenshot.py"), "--watch"]
+    command = [sys.executable, str(SCRIPT_DIR / "translate-screenshot.py"), "--watch"]
     creation_flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
     return subprocess.Popen(command, cwd=ROOT, creationflags=creation_flags)
 
@@ -392,7 +393,7 @@ def launch_archive(archive, state):
     if extra_count > 0:
         print(f"{extra_count} additional image(s) remain in the cache for manual swapping.")
 
-    run_powershell_script(ROOT / "run-pc98.ps1", ["-Image", *selected_images])
+    run_powershell_script(SCRIPT_DIR / "run-pc98.ps1", ["-Image", *selected_images])
     print("Starting LM Studio translation watcher...")
     start_translator()
     update_recent(state, archive)

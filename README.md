@@ -18,8 +18,8 @@ games-rard/    Your legally obtained .rar game catalog
 disks/         Local extraction cache and your own disk images
 ```
 
-The launcher expects `run-pc98.ps1`, `game-launcher.py`, and
-`translate-screenshot.py` to remain in the project root.
+The root `game-launcher.bat` is the main entrypoint. Implementation scripts live
+under `scripts/`.
 
 ## Run
 
@@ -42,8 +42,8 @@ The catalog launcher:
 - displays names without the `.rar` suffix
 - stores recent play history in `launcher-state.json`
 - extracts selected archives into `disks\catalog\`
-- mounts detected PC-98 disk images through `run-pc98.ps1`
-- starts `translate-screenshot.py --watch`
+- mounts detected PC-98 disk images through `scripts\run-pc98.ps1`
+- starts `scripts\translate-screenshot.py --watch`
 
 ## Translation Overlay
 
@@ -58,7 +58,7 @@ Optional LM Studio settings:
 ```powershell
 set LMSTUDIO_BASE_URL=http://localhost:1234/v1
 set LMSTUDIO_MODEL=your-loaded-vision-model-id
-python translate-screenshot.py --watch
+python scripts\translate-screenshot.py --watch
 ```
 
 The LM Studio request uses structured JSON with:
@@ -79,20 +79,20 @@ returns valid `#RRGGBB` values.
 Launch the emulator with no image:
 
 ```powershell
-.\run-pc98.ps1
+.\scripts\run-pc98.ps1
 ```
 
 Launch with a hard disk or floppy image:
 
 ```powershell
-.\run-pc98.ps1 .\disks\game.hdi
-.\run-pc98.ps1 .\disks\disk1.d88 .\disks\disk2.d88
+.\scripts\run-pc98.ps1 .\disks\game.hdi
+.\scripts\run-pc98.ps1 .\disks\disk1.d88 .\disks\disk2.d88
 ```
 
 If script execution is blocked:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run-pc98.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-pc98.ps1
 ```
 
 Supported image extensions include `.hdi`, `.nhd`, `.hdd`, `.hdn`, `.vhd`,

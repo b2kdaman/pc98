@@ -5,7 +5,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root = Split-Path -Parent $ScriptDir
+if ((Split-Path -Leaf $ScriptDir) -ne 'scripts') {
+    $Root = $ScriptDir
+}
 $EmulatorDir = Join-Path $Root 'emulator'
 $ExeName = if ([Environment]::Is64BitOperatingSystem -and -not $X86) { 'np21x64w.exe' } else { 'np21w.exe' }
 $ExePath = Join-Path $EmulatorDir $ExeName

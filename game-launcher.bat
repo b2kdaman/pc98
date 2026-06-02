@@ -1,2 +1,2 @@
 @echo off
-python "%~dp0game-launcher.py" %*
+python "%~dp0scripts\game-launcher.py" %*
