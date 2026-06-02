@@ -10,6 +10,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from pathlib import PureWindowsPath
 
 import local_llm
 
@@ -321,6 +322,75 @@ def remove_cache_dir(cache_dir):
     shutil.rmtree(resolved_cache)
 
 
+def archive_member_is_safe(member_name):
+    if not member_name or any(ord(char) < 32 for char in member_name):
+        return False
+    if re.match(r"^[A-Za-z]:", member_name):
+        return False
+    if member_name.startswith(("/", "\\")):
+        return False
+
+    normalized = member_name.replace("\\", "/")
+    parts = PureWindowsPath(normalized).parts
+    return all(part not in {"", ".", ".."} for part in parts)
+
+
+def validate_archive_members(archive_path):
+    list_result = subprocess.run(
+        ["tar", "-tf", str(archive_path)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if list_result.returncode != 0:
+        details = (list_result.stderr or list_result.stdout or "").strip()
+        raise RuntimeError(
+            "Archive listing failed before extraction.\n"
+            f"Archive: {archive_path}\n"
+            f"Details: {details or 'tar exited without details.'}"
+        )
+
+    unsafe_members = [
+        line.strip()
+        for line in list_result.stdout.splitlines()
+        if not archive_member_is_safe(line.strip())
+    ]
+    if unsafe_members:
+        raise RuntimeError(
+            "Archive contains unsafe member paths and will not be extracted.\n"
+            f"Archive: {archive_path}\n"
+            "Unsafe entries:\n"
+            + "\n".join(f"  {member}" for member in unsafe_members[:10])
+        )
+
+    verbose_result = subprocess.run(
+        ["tar", "-tvf", str(archive_path)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if verbose_result.returncode != 0:
+        details = (verbose_result.stderr or verbose_result.stdout or "").strip()
+        raise RuntimeError(
+            "Archive type check failed before extraction.\n"
+            f"Archive: {archive_path}\n"
+            f"Details: {details or 'tar exited without details.'}"
+        )
+
+    unsafe_types = [
+        line.strip()
+        for line in verbose_result.stdout.splitlines()
+        if line and line[0].lower() in {"h", "l"}
+    ]
+    if unsafe_types:
+        raise RuntimeError(
+            "Archive contains links and will not be extracted.\n"
+            f"Archive: {archive_path}\n"
+            "Unsafe entries:\n"
+            + "\n".join(f"  {member}" for member in unsafe_types[:10])
+        )
+
+
 def extract_archive(archive):
     cache_dir = cache_path_for(archive["path"])
     if is_cache_current(cache_dir, archive):
@@ -329,6 +399,7 @@ def extract_archive(archive):
     if cache_dir.exists():
         remove_cache_dir(cache_dir)
 
+    validate_archive_members(archive["path"])
     cache_dir.mkdir(parents=True, exist_ok=True)
     command = ["tar", "-xf", str(archive["path"]), "-C", str(cache_dir)]
     result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)

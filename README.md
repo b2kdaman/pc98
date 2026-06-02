@@ -161,6 +161,11 @@ Vulkan devices instead of CUDA devices; set `LOCAL_LLM_SERVER_PATH` to another
 CUDA-enabled `llama-server.exe` if you want to override the local runtime. Set
 `LOCAL_LLM_DEVICE=none` to force CPU mode.
 
+The launcher binds a managed `llama-server` only to loopback hosts by default.
+Set `LOCAL_LLM_ALLOW_REMOTE_BIND=1` only if you intentionally want to expose the
+local LLM API outside this machine. Downloaded GGUF files are checked against
+pinned SHA256 hashes.
+
 Manual runtime checks:
 
 ```powershell

@@ -306,9 +306,44 @@ def emulator_is_running(title_hint, emulator_pid):
     return find_emulator_hwnd_or_none(title_hint) is not None
 
 
+def process_command_line(pid):
+    if os.name != "nt":
+        return ""
+
+    command = [
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        (
+            "$p = Get-CimInstance Win32_Process "
+            f"-Filter \"ProcessId = {int(pid)}\"; "
+            "if ($p) { $p.CommandLine }"
+        ),
+    ]
+    result = subprocess.run(
+        command,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return (result.stdout or "").strip()
+
+
+def managed_process_is_safe_to_stop(pid):
+    command_line = process_command_line(pid).lower()
+    if not command_line:
+        return False
+
+    model_path = str(local_llm.env_model_path()).lower()
+    return "llama-server" in command_line and model_path in command_line
+
+
 def stop_managed_processes(pids):
     for pid in pids or []:
         if not process_is_running(pid):
+            continue
+        if not managed_process_is_safe_to_stop(pid):
+            print(f"Skipping unmanaged process {pid}.")
             continue
 
         print(f"Stopping managed process {pid}.")

@@ -83,3 +83,15 @@ equivalent non-interactive check that old state files still load.
 
 Use `git status --short` before committing. Keep generated caches and local
 runtime artifacts out of commits.
+
+## Security Notes
+
+- Validate archive member paths before extraction; reject absolute paths,
+  traversal, control characters, and links.
+- Keep managed `llama-server` binds loopback-only unless
+  `LOCAL_LLM_ALLOW_REMOTE_BIND=1` is explicitly set.
+- Keep GGUF/mmproj downloads pinned to expected SHA256 hashes.
+- Do not let `LOCAL_LLM_SERVER_ARGS` override model, host, port, alias, device,
+  or GPU-layer settings.
+- Watcher cleanup should only stop launcher-managed `llama-server` processes,
+  not arbitrary PIDs.

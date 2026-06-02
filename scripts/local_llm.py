@@ -1,4 +1,6 @@
 import argparse
+import hashlib
+import ipaddress
 import json
 import os
 import shlex
@@ -33,6 +35,26 @@ MMPROJ_URL = (
 )
 MODEL_MIN_BYTES = 5_000_000_000
 MMPROJ_MIN_BYTES = 900_000_000
+MODEL_SHA256 = "d0027dd3a9128d9323e9f282c8bf010a8526c46477584535991dc1a869b56e96"
+MMPROJ_SHA256 = "debad39ab9c1152ab67695a674fb35e8375b2320c57bfd5075835d3ccb16c7db"
+BLOCKED_EXTRA_ARGS = {
+    "-m",
+    "--model",
+    "--hf-repo",
+    "--hf-file",
+    "--mmproj",
+    "-mm",
+    "--mmproj-url",
+    "-mmu",
+    "--host",
+    "--port",
+    "--alias",
+    "--device",
+    "-dev",
+    "--n-gpu-layers",
+    "--gpu-layers",
+    "-ngl",
+}
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -59,7 +81,18 @@ def env_model_id():
 
 def env_llama_server_path():
     value = os.environ.get("LOCAL_LLM_SERVER_PATH")
-    return str(Path(value)) if value else None
+    if not value:
+        return None
+
+    path = Path(value)
+    if not path.is_file():
+        raise RuntimeError(f"LOCAL_LLM_SERVER_PATH does not exist: {path}")
+    if path.name.lower() != "llama-server.exe":
+        raise RuntimeError(
+            "LOCAL_LLM_SERVER_PATH must point to llama-server.exe, not "
+            f"{path.name}"
+        )
+    return str(path)
 
 
 def env_llm_device():
@@ -71,7 +104,25 @@ def env_gpu_layers():
 
 
 def env_extra_args():
-    return shlex.split(os.environ.get("LOCAL_LLM_SERVER_ARGS", ""))
+    args = shlex.split(os.environ.get("LOCAL_LLM_SERVER_ARGS", ""))
+    lowered = [arg.lower() for arg in args]
+    for arg in lowered:
+        option = arg.split("=", 1)[0]
+        if option in BLOCKED_EXTRA_ARGS:
+            raise RuntimeError(
+                "LOCAL_LLM_SERVER_ARGS cannot override model, host, port, alias, "
+                f"device, or GPU-layer settings: {arg}"
+            )
+    return args
+
+
+def env_allows_remote_bind():
+    return os.environ.get("LOCAL_LLM_ALLOW_REMOTE_BIND", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def api_url(base_url, path):
@@ -231,21 +282,50 @@ def file_is_present(path, min_bytes):
     return file_path.exists() and file_path.stat().st_size >= min_bytes
 
 
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as file:
+        while True:
+            chunk = file.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_file_hash(path, expected_sha256, label):
+    actual = sha256_file(path)
+    if actual.lower() != expected_sha256.lower():
+        raise RuntimeError(
+            f"{label} SHA256 mismatch.\n"
+            f"Path: {path}\n"
+            f"Expected: {expected_sha256}\n"
+            f"Actual:   {actual}"
+        )
+
+
+def asset_is_present(path, min_bytes, expected_sha256, label):
+    if not file_is_present(path, min_bytes):
+        return False
+    verify_file_hash(path, expected_sha256, label)
+    return True
+
+
 def model_is_present(path=None):
     model_path = Path(path or env_model_path())
-    return file_is_present(model_path, MODEL_MIN_BYTES)
+    return asset_is_present(model_path, MODEL_MIN_BYTES, MODEL_SHA256, "model GGUF")
 
 
 def mmproj_is_present(path=None):
     mmproj_path = Path(path or env_mmproj_path())
-    return file_is_present(mmproj_path, MMPROJ_MIN_BYTES)
+    return asset_is_present(mmproj_path, MMPROJ_MIN_BYTES, MMPROJ_SHA256, "mmproj GGUF")
 
 
-def download_large_file(url, destination, min_bytes, label, dry_run=False):
+def download_large_file(url, destination, min_bytes, expected_sha256, label, dry_run=False):
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    if file_is_present(destination, min_bytes):
+    if asset_is_present(destination, min_bytes, expected_sha256, label):
         print(f"{label} already present: {destination}")
         return destination
 
@@ -303,6 +383,7 @@ def download_large_file(url, destination, min_bytes, label, dry_run=False):
         )
 
     partial_path.replace(destination)
+    verify_file_hash(destination, expected_sha256, label)
     print(f"{label} ready: {destination}")
     return destination
 
@@ -312,6 +393,7 @@ def download_model(dry_run=False):
         os.environ.get("LOCAL_LLM_MODEL_URL", MODEL_URL),
         env_model_path(),
         MODEL_MIN_BYTES,
+        MODEL_SHA256,
         "model GGUF",
         dry_run=dry_run,
     )
@@ -322,6 +404,7 @@ def download_mmproj(dry_run=False):
         os.environ.get("LOCAL_LLM_MMPROJ_URL", MMPROJ_URL),
         env_mmproj_path(),
         MMPROJ_MIN_BYTES,
+        MMPROJ_SHA256,
         "mmproj GGUF",
         dry_run=dry_run,
     )
@@ -340,6 +423,26 @@ def parse_host_port(base_url):
     return host, port
 
 
+def host_is_loopback(host):
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def validate_bind_host(host):
+    if host_is_loopback(host) or env_allows_remote_bind():
+        return
+    raise RuntimeError(
+        "Refusing to bind llama-server to a non-loopback host.\n"
+        f"Host: {host}\n"
+        "Use LOCAL_LLM_ALLOW_REMOTE_BIND=1 only if you intentionally want to "
+        "expose the local LLM server."
+    )
+
+
 def start_llama_server(base_url=None):
     base_url = base_url or env_base_url()
     if server_reachable(base_url):
@@ -352,6 +455,7 @@ def start_llama_server(base_url=None):
         raise RuntimeError("llama-server was not found after installation.")
 
     host, port = parse_host_port(base_url)
+    validate_bind_host(host)
     command = [
         llama_server,
         "-m",
