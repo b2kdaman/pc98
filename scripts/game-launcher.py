@@ -1,4 +1,5 @@
 import argparse
+import ctypes
 import hashlib
 import json
 import msvcrt
@@ -46,13 +47,98 @@ KEY_RIGHT = "right"
 KEY_ENTER = "enter"
 KEY_ESC = "esc"
 KEY_BACKSPACE = "backspace"
+KEY_SPACE = "space"
 KEY_OTHER = "other"
+
+ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+STD_OUTPUT_HANDLE = -11
+LF_FACESIZE = 32
+
+
+class ConsoleCoord(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_short), ("y", ctypes.c_short)]
+
+
+class ConsoleFontInfoEx(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.c_ulong),
+        ("nFont", ctypes.c_ulong),
+        ("dwFontSize", ConsoleCoord),
+        ("FontFamily", ctypes.c_uint),
+        ("FontWeight", ctypes.c_uint),
+        ("FaceName", ctypes.c_wchar * LF_FACESIZE),
+    ]
+
+
+class Color:
+    reset = "\033[0m"
+    bold = "\033[1m"
+    dim = "\033[2m"
+    cyan = "\033[96m"
+    magenta = "\033[95m"
+    yellow = "\033[93m"
+    green = "\033[92m"
+    red = "\033[91m"
+    white = "\033[97m"
+    selected = "\033[30;46m"
+
+
+USE_COLOR = False
 
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+
+def enable_console_style():
+    global USE_COLOR
+    USE_COLOR = bool(sys.stdout.isatty())
+    if os.name != "nt":
+        return
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+        mode = ctypes.c_ulong()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            kernel32.SetConsoleMode(
+                handle,
+                mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+            )
+    except Exception:
+        pass
+
+
+def set_console_font():
+    if os.name != "nt":
+        return
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+        for face_name in ("Cascadia Mono", "Cascadia Code", "Consolas"):
+            font = ConsoleFontInfoEx()
+            font.cbSize = ctypes.sizeof(ConsoleFontInfoEx)
+            font.dwFontSize = ConsoleCoord(0, 20)
+            font.FontFamily = 54
+            font.FontWeight = 600
+            font.FaceName = face_name
+            if kernel32.SetCurrentConsoleFontEx(handle, False, ctypes.byref(font)):
+                return
+    except Exception:
+        pass
+
+
+def paint(text, *codes):
+    if not USE_COLOR or not codes:
+        return text
+    return "".join(codes) + text + Color.reset
+
+
+def accent(text):
+    return paint(text, Color.cyan, Color.bold)
 
 
 def friendly_name(path):
@@ -91,22 +177,29 @@ def scan_catalog():
 
 def load_state():
     if not STATE_PATH.exists():
-        return {"recent": []}
+        return {"recent": [], "favorites": []}
 
     try:
         with STATE_PATH.open("r", encoding="utf-8") as file:
             state = json.load(file)
     except (OSError, json.JSONDecodeError):
-        return {"recent": []}
+        return {"recent": [], "favorites": []}
 
     if not isinstance(state, dict):
-        return {"recent": []}
+        return {"recent": [], "favorites": []}
 
     recent = state.get("recent", [])
     if not isinstance(recent, list):
         recent = []
 
-    return {"recent": [item for item in recent if isinstance(item, dict)]}
+    favorites = state.get("favorites", [])
+    if not isinstance(favorites, list):
+        favorites = []
+
+    return {
+        "recent": [item for item in recent if isinstance(item, dict)],
+        "favorites": [item for item in favorites if isinstance(item, str)],
+    }
 
 
 def save_state(state):
@@ -140,6 +233,25 @@ def update_recent(state, archive):
         if item.get("archivePath") != archive_path
     ]
     state["recent"] = [new_item] + remaining
+    save_state(state)
+
+
+def archive_path_key(archive):
+    return str(archive["path"])
+
+
+def is_favorite(state, archive):
+    return archive_path_key(archive) in set(state.get("favorites", []))
+
+
+def toggle_favorite(state, archive):
+    archive_path = archive_path_key(archive)
+    favorites = [item for item in state.get("favorites", []) if isinstance(item, str)]
+    if archive_path in favorites:
+        favorites = [item for item in favorites if item != archive_path]
+    else:
+        favorites.append(archive_path)
+    state["favorites"] = favorites
     save_state(state)
 
 
@@ -295,6 +407,8 @@ def read_key():
     key = msvcrt.getwch()
     if key in ("\r", "\n"):
         return KEY_ENTER
+    if key == " ":
+        return KEY_SPACE
     if key == "\x1b":
         return KEY_ESC
     if key == "\b":
@@ -311,18 +425,44 @@ def read_key():
 
 
 def draw_header(title, subtitle=None):
-    print(title)
+    width = 78
+    top = "+" + "-" * (width - 2) + "+"
+    print(paint(top, Color.magenta))
+    title_text = title[: width - 4].ljust(width - 4)
+    print(paint("|", Color.magenta) + " " + accent(title_text) + paint(" |", Color.magenta))
     if subtitle:
-        print(subtitle)
+        subtitle_text = subtitle[: width - 4].ljust(width - 4)
+        print(
+            paint("|", Color.magenta)
+            + " "
+            + paint(subtitle_text, Color.yellow)
+            + paint(" |", Color.magenta)
+        )
+    print(paint(top, Color.magenta))
     print("")
 
 
-def pick_from_items(title, items, *, subtitle=None, item_label=None, page_size=PAGE_SIZE):
+def draw_status(text):
+    print(paint(text, Color.dim, Color.cyan))
+
+
+def pick_from_items(
+    title,
+    items,
+    *,
+    subtitle=None,
+    item_label=None,
+    page_size=PAGE_SIZE,
+    item_archive=None,
+    is_favorite_item=None,
+    toggle_favorite_item=None,
+    refresh_items=None,
+):
     if not items:
         clear_screen()
         draw_header(title, subtitle)
-        print("No games to show.")
-        print("\nPress any key to go back.")
+        print(paint("No games to show.", Color.yellow))
+        print(paint("\nPress any key to go back.", Color.dim))
         read_key()
         return None
 
@@ -330,6 +470,7 @@ def pick_from_items(title, items, *, subtitle=None, item_label=None, page_size=P
     page = 0
     total_pages = max((len(items) + page_size - 1) // page_size, 1)
     label = item_label or (lambda item: item["name"])
+    archive_for = item_archive or (lambda item: item)
 
     while True:
         page = min(page, total_pages - 1)
@@ -342,13 +483,25 @@ def pick_from_items(title, items, *, subtitle=None, item_label=None, page_size=P
         draw_header(
             title,
             subtitle
-            or f"{len(items)} item(s) | Page {page + 1}/{total_pages} | Up/Down select | Left/Right page | Enter launch | Esc back",
+            or f"{len(items)} game(s) | Page {page + 1}/{total_pages} | Up/Down select | Left/Right page | Space favorite | Enter launch | Esc back",
         )
 
         for offset, item in enumerate(visible):
             absolute = page_start + offset
             marker = ">" if absolute == selected else " "
-            print(f"{marker} {label(item)}")
+            archive = archive_for(item)
+            favorite = bool(is_favorite_item and is_favorite_item(archive))
+            star = "*" if favorite else " "
+            row = f"{marker} {star} {label(item)}"
+            if absolute == selected:
+                print(paint(row, Color.selected, Color.bold))
+            elif favorite:
+                print(f"{marker} {paint(star, Color.yellow, Color.bold)} {paint(label(item), Color.white)}")
+            else:
+                print(paint(row, Color.cyan))
+
+        print("")
+        draw_status("Hint: Space toggles the * favorite marker.")
 
         key = read_key()
         if key == KEY_UP:
@@ -367,6 +520,16 @@ def pick_from_items(title, items, *, subtitle=None, item_label=None, page_size=P
             if page < total_pages - 1:
                 page += 1
                 selected = page * page_size
+        elif key == KEY_SPACE:
+            if toggle_favorite_item:
+                toggle_favorite_item(archive_for(items[selected]))
+                if refresh_items:
+                    items = refresh_items()
+                    if not items:
+                        return None
+                    total_pages = max((len(items) + page_size - 1) // page_size, 1)
+                    selected = min(selected, len(items) - 1)
+                    page = min(page, total_pages - 1)
         elif key == KEY_ENTER:
             return items[selected]
         elif key in {KEY_ESC, KEY_BACKSPACE}:
@@ -378,7 +541,7 @@ def prompt_search_query():
     while True:
         clear_screen()
         draw_header("Search Catalog", "Type to filter | Enter search | Esc back")
-        print(f"Search: {query}")
+        print(f"{paint('Search:', Color.magenta, Color.bold)} {paint(query, Color.white)}")
         key = read_key()
         if key == KEY_ENTER:
             return query.strip()
@@ -391,9 +554,12 @@ def prompt_search_query():
 
 
 def launch_archive(archive, state):
-    print(f"\nPreparing {archive['name']}...")
+    print(paint(f"\nPreparing {archive['name']}...", Color.cyan, Color.bold))
     cache_dir, extracted = extract_archive(archive)
-    print(f"{'Extracted to' if extracted else 'Using cached'}: {cache_dir}")
+    print(
+        f"{paint('Extracted to' if extracted else 'Using cached', Color.green)}: "
+        f"{paint(str(cache_dir), Color.white)}"
+    )
 
     all_images, selected_images = find_images(cache_dir)
     if not selected_images:
@@ -403,27 +569,32 @@ def launch_archive(archive, state):
             f"Cache: {cache_dir}"
         )
 
-    print("Mounting:")
+    print(paint("Mounting:", Color.magenta, Color.bold))
     for image in selected_images:
-        print(f"  {image.name}")
+        print(f"  {paint(image.name, Color.yellow)}")
 
     extra_count = len(all_images) - len(selected_images)
     if extra_count > 0:
-        print(f"{extra_count} additional image(s) remain in the cache for manual swapping.")
+        print(
+            paint(
+                f"{extra_count} additional image(s) remain in the cache for manual swapping.",
+                Color.dim,
+            )
+        )
 
-    print("Preparing local GGUF translation runtime...")
+    print(paint("Preparing local GGUF translation runtime...", Color.cyan))
     local_llm_process = local_llm.ensure_ready()
     emulator_output = run_powershell_script(
         SCRIPT_DIR / "run-pc98.ps1",
         ["-Image", *selected_images],
     )
     emulator_pid = extract_process_id(emulator_output)
-    print("Starting local translation watcher...")
+    print(paint("Starting local translation watcher...", Color.cyan))
     managed_process_pids = [local_llm_process.pid] if local_llm_process else []
     start_translator(emulator_pid, managed_process_pids)
     update_recent(state, archive)
-    print("Launched. The translator is running in a separate console window.")
-    print("\nPress any key to return to the launcher.")
+    print(paint("Launched. The translator is running in a separate console window.", Color.green))
+    print(paint("\nPress any key to return to the launcher.", Color.dim))
     read_key()
 
 
@@ -440,11 +611,30 @@ def show_recent(state, catalog_by_path):
         recent_items,
         item_label=lambda item: item["label"],
         page_size=RECENT_LIMIT,
+        item_archive=lambda item: item["archive"],
+        is_favorite_item=lambda archive: is_favorite(state, archive),
+        toggle_favorite_item=lambda archive: toggle_favorite(state, archive),
     )
     return selected["archive"] if selected else None
 
 
-def search_catalog(catalog):
+def favorite_archives(state, catalog):
+    favorites = set(state.get("favorites", []))
+    return [archive for archive in catalog if archive_path_key(archive) in favorites]
+
+
+def show_favorites(state, catalog):
+    return pick_from_items(
+        "Favorite Games",
+        favorite_archives(state, catalog),
+        subtitle="Favorited games | Up/Down select | Left/Right page | Space unfavorite | Enter launch | Esc back",
+        is_favorite_item=lambda archive: is_favorite(state, archive),
+        toggle_favorite_item=lambda archive: toggle_favorite(state, archive),
+        refresh_items=lambda: favorite_archives(state, catalog),
+    )
+
+
+def search_catalog(catalog, state):
     query = prompt_search_query().lower()
     if not query:
         return None
@@ -457,20 +647,28 @@ def search_catalog(catalog):
     return pick_from_items(
         "Search Results",
         matches,
-        subtitle=f"{len(matches)} match(es) for '{query}' | Up/Down select | Left/Right page | Enter launch | Esc back",
+        subtitle=f"{len(matches)} match(es) for '{query}' | Up/Down select | Left/Right page | Space favorite | Enter launch | Esc back",
+        is_favorite_item=lambda archive: is_favorite(state, archive),
+        toggle_favorite_item=lambda archive: toggle_favorite(state, archive),
     )
 
 
-def browse_catalog(catalog):
-    return pick_from_items("Full Catalog", catalog)
+def browse_catalog(catalog, state):
+    return pick_from_items(
+        "Full Catalog",
+        catalog,
+        is_favorite_item=lambda archive: is_favorite(state, archive),
+        toggle_favorite_item=lambda archive: toggle_favorite(state, archive),
+    )
 
 
 def main_menu(catalog, state):
     catalog_by_path = {str(archive["path"]): archive for archive in catalog}
     menu_items = [
         ("Recent games", lambda: show_recent(state, catalog_by_path)),
-        ("Search catalog", lambda: search_catalog(catalog)),
-        ("Browse full catalog", lambda: browse_catalog(catalog)),
+        ("Favorite games", lambda: show_favorites(state, catalog)),
+        ("Search catalog", lambda: search_catalog(catalog, state)),
+        ("Browse full catalog", lambda: browse_catalog(catalog, state)),
         ("Quit", None),
     ]
     selected = 0
@@ -483,7 +681,11 @@ def main_menu(catalog, state):
         )
         for index, (label, _) in enumerate(menu_items):
             marker = ">" if index == selected else " "
-            print(f"{marker} {label}")
+            row = f"{marker} {label}"
+            if index == selected:
+                print(paint(row, Color.selected, Color.bold))
+            else:
+                print(paint(row, Color.cyan))
 
         key = read_key()
         if key == KEY_UP:
@@ -508,8 +710,11 @@ def main_menu(catalog, state):
             clear_screen()
             launch_archive(archive, state)
         except Exception as error:
-            print(f"\nCould not launch {archive['name']}:\n{error}\n", file=sys.stderr)
-            print("Press any key to return to the launcher.")
+            print(
+                paint(f"\nCould not launch {archive['name']}:\n{error}\n", Color.red),
+                file=sys.stderr,
+            )
+            print(paint("Press any key to return to the launcher.", Color.dim))
             read_key()
 
 
@@ -537,10 +742,12 @@ def parse_args():
 
 
 def main():
+    enable_console_style()
+    set_console_font()
     args = parse_args()
     catalog = scan_catalog()
     if not catalog:
-        print(f"No .rar games found in {CATALOG_DIR}")
+        print(paint(f"No .rar games found in {CATALOG_DIR}", Color.red))
         return 1
 
     state = load_state()
@@ -569,17 +776,17 @@ def main():
             if query in archive["name"].lower()
         ]
         if not matches:
-            print(f"No game matched: {args.launch}")
+            print(paint(f"No game matched: {args.launch}", Color.red))
             return 1
         if args.no_launch:
             cache_dir, extracted = extract_archive(matches[0])
             all_images, selected_images = find_images(cache_dir)
             if not selected_images:
-                print("No supported PC-98 disk images were found after extraction.")
+                print(paint("No supported PC-98 disk images were found after extraction.", Color.red))
                 return 1
             update_recent(state, matches[0])
-            print(f"{'Extracted' if extracted else 'Cached'}: {matches[0]['name']}")
-            print(f"Selected images: {len(selected_images)} of {len(all_images)}")
+            print(paint(f"{'Extracted' if extracted else 'Cached'}: {matches[0]['name']}", Color.green))
+            print(paint(f"Selected images: {len(selected_images)} of {len(all_images)}", Color.cyan))
             return 0
         launch_archive(matches[0], state)
         return 0

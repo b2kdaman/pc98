@@ -34,6 +34,7 @@ Controls:
 
 - Up/Down: move through menus and game lists
 - Left/Right: page through game lists
+- Space: mark/unmark the highlighted game as a favorite
 - Enter: select or launch
 - Esc/Backspace: go back
 
@@ -41,7 +42,7 @@ The catalog launcher:
 
 - scans `.rar` files recursively under `games-rard/`
 - displays names without the `.rar` suffix
-- stores recent play history in `launcher-state.json`
+- stores recent play history and favorites in `launcher-state.json`
 - extracts selected archives into `disks\catalog\`
 - mounts detected PC-98 disk images through `scripts\run-pc98.ps1`
 - starts `scripts\translate-screenshot.py --watch`
