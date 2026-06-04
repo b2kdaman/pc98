@@ -2,8 +2,10 @@
 
 ## Project Shape
 
-This is a Windows-focused PC-98 launcher and translation wrapper. The root
-entrypoint is `game-launcher.bat`; implementation code lives in `scripts/`.
+This is a Windows-focused PC-98 launcher and translation wrapper. The PC-98
+catalog entrypoint is `game-launcher.bat`; the universal standalone-window
+translator entrypoint is `universal-launcher.bat`. Implementation code lives in
+`scripts/`.
 
 Important local folders:
 
@@ -19,6 +21,7 @@ disk images, screenshots, downloaded models, or local launcher state.
 
 - Launcher: `python scripts\game-launcher.py`
 - Batch entrypoint: `.\game-launcher.bat`
+- Universal window launcher: `.\universal-launcher.bat`
 - Direct emulator runner: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-pc98.ps1`
 - Translator: `python scripts\translate-screenshot.py --watch`
 - Local LLM bootstrap: `python scripts\local_llm.py status`
@@ -27,6 +30,10 @@ The launcher scans `.rar` and `.zip` files under `games-rard/`, extracts
 selected archives into `disks\catalog\`, launches Neko Project through
 `run-pc98.ps1`, starts a local `llama-server` when needed, and opens the
 translation watcher.
+
+The universal launcher lists visible windows and starts the watcher with
+`--hwnd`, so standalone Windows games can be translated without going through
+the PC-98 catalog launcher.
 
 ## Launcher State
 

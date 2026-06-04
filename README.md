@@ -25,8 +25,9 @@ disks/         Local extraction cache and your own disk images
 models/        Local GGUF model cache
 ```
 
-The root `game-launcher.bat` is the main entrypoint. Implementation scripts live
-under `scripts/`.
+The root `game-launcher.bat` is the PC-98 catalog entrypoint. The root
+`universal-launcher.bat` attaches the translator to any visible standalone
+Windows game/app window. Implementation scripts live under `scripts/`.
 
 ## Current Emulator Folder Tree
 
@@ -114,6 +115,27 @@ The catalog launcher:
 - extracts selected archives into `disks\catalog\`
 - mounts detected PC-98 disk images through `scripts\run-pc98.ps1`
 - starts `scripts\translate-screenshot.py --watch`
+
+## Universal Window Translation
+
+Attach the translation overlay to any visible standalone Windows game or app:
+
+```powershell
+.\universal-launcher.bat
+```
+
+Controls:
+
+- Up/Down: move through visible windows
+- Left/Right: page through the window list
+- R: refresh the window list
+- Enter: attach the translation watcher to the selected window
+- Esc/Backspace: quit
+
+The universal launcher starts the same local GGUF translation runtime, then runs
+`scripts\translate-screenshot.py --watch --hwnd <window-handle>`. Right-click
+inside the selected target window to translate. The overlay follows the selected
+window and closes when that window is closed.
 
 ## Translation Overlay
 

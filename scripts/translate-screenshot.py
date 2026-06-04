@@ -146,6 +146,8 @@ user32.CallNextHookEx.argtypes = [
 ]
 user32.CallNextHookEx.restype = ctypes.c_longlong
 user32.UnhookWindowsHookEx.argtypes = [ctypes.c_void_p]
+user32.IsWindow.argtypes = [ctypes.c_void_p]
+user32.IsWindow.restype = ctypes.c_bool
 user32.PostThreadMessageW.argtypes = [
     ctypes.c_ulong,
     ctypes.c_uint,
@@ -164,12 +166,13 @@ kernel32.CloseHandle.restype = ctypes.c_bool
 
 
 class GlobalMouseTriggerHook:
-    def __init__(self, title_hint):
+    def __init__(self, title_hint, hwnd=None):
         self.event = threading.Event()
         self.hook = None
         self.thread = None
         self.thread_id = ctypes.c_ulong(0)
         self.title_hint = title_hint
+        self.hwnd = hwnd
         self._callback = LowLevelMouseProc(self._handle_mouse)
 
     def start(self):
@@ -208,7 +211,12 @@ class GlobalMouseTriggerHook:
     def _handle_mouse(self, code, w_param, l_param):
         if code == HC_ACTION and int(w_param) == WM_RBUTTONDOWN:
             mouse = ctypes.cast(l_param, ctypes.POINTER(MouseHookStruct)).contents
-            if point_is_in_emulator_client(mouse.pt.x, mouse.pt.y, self.title_hint):
+            if point_is_in_target_client(
+                mouse.pt.x,
+                mouse.pt.y,
+                self.title_hint,
+                self.hwnd,
+            ):
                 self.event.set()
                 return 1
         return user32.CallNextHookEx(self.hook, code, w_param, l_param)
@@ -263,6 +271,28 @@ def find_emulator_window(title_hint):
     )
 
 
+def window_title(hwnd):
+    if not user32.IsWindow(hwnd):
+        return ""
+
+    length = user32.GetWindowTextLengthW(hwnd)
+    if length <= 0:
+        return ""
+
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buffer, length + 1)
+    return buffer.value.strip()
+
+
+def find_target_window(title_hint, hwnd=None):
+    if hwnd:
+        if not user32.IsWindow(hwnd):
+            raise RuntimeError(f"Target window is no longer available: {hwnd}")
+        title = window_title(hwnd) or f"Window {hwnd}"
+        return hwnd, title
+    return find_emulator_window(title_hint)
+
+
 def find_emulator_hwnd_or_none(title_hint):
     try:
         hwnd, _title = find_emulator_window(title_hint)
@@ -271,8 +301,14 @@ def find_emulator_hwnd_or_none(title_hint):
         return None
 
 
-def point_is_in_emulator_client(x, y, title_hint):
-    hwnd = find_emulator_hwnd_or_none(title_hint)
+def find_target_hwnd_or_none(title_hint, hwnd=None):
+    if hwnd:
+        return hwnd if user32.IsWindow(hwnd) else None
+    return find_emulator_hwnd_or_none(title_hint)
+
+
+def point_is_in_target_client(x, y, title_hint, hwnd=None):
+    hwnd = find_target_hwnd_or_none(title_hint, hwnd)
     if not hwnd:
         return False
     left, top, right, bottom = client_bbox(hwnd)
@@ -300,10 +336,10 @@ def process_is_running(pid):
     return alive
 
 
-def emulator_is_running(title_hint, emulator_pid):
+def emulator_is_running(title_hint, emulator_pid, hwnd=None):
     if emulator_pid:
         return process_is_running(emulator_pid)
-    return find_emulator_hwnd_or_none(title_hint) is not None
+    return find_target_hwnd_or_none(title_hint, hwnd) is not None
 
 
 def process_command_line(pid):
@@ -394,16 +430,16 @@ def client_bbox(hwnd):
     return top_left.x, top_left.y, bottom_right.x, bottom_right.y
 
 
-def capture_window(title_hint):
-    hwnd, title = find_emulator_window(title_hint)
+def capture_window(title_hint, hwnd=None):
+    hwnd, title = find_target_window(title_hint, hwnd)
     user32.SetForegroundWindow(hwnd)
     time.sleep(0.15)
     image = ImageGrab.grab(bbox=client_bbox(hwnd))
     return image, title
 
 
-def capture_window_image(title_hint):
-    hwnd, title = find_emulator_window(title_hint)
+def capture_window_image(title_hint, hwnd=None):
+    hwnd, title = find_target_window(title_hint, hwnd)
     image = ImageGrab.grab(bbox=client_bbox(hwnd))
     return image, title
 
@@ -612,10 +648,11 @@ def show_translation(result):
 
 
 class LiveTranslationWindow:
-    def __init__(self, title_hint):
+    def __init__(self, title_hint, hwnd=None):
         self.closed = False
         self.translate_requested = False
         self.title_hint = title_hint
+        self.hwnd = hwnd
         self.root = Tk()
         self.root.title("")
         self.current_style = DEFAULT_STYLE.copy()
@@ -746,7 +783,7 @@ class LiveTranslationWindow:
     def position_below_emulator(self):
         if self.closed:
             return
-        hwnd = find_emulator_hwnd_or_none(self.title_hint)
+        hwnd = find_target_hwnd_or_none(self.title_hint, self.hwnd)
         if not hwnd:
             self.root.geometry("780x260")
             return
@@ -772,7 +809,7 @@ def run_once(args):
         image = Image.open(args.image).convert("RGB")
         print(f"Loaded {args.image} in memory")
     else:
-        image, title = capture_window(args.title)
+        image, title = capture_window(args.title, args.hwnd)
         print(f"Captured {title} in memory")
     print("Sending screenshot to local LLM for translation...")
     translated = translate_with_local_llm(
@@ -790,22 +827,26 @@ def run_once(args):
 
 def run_watch(args):
     print("Waiting for right-click events.")
-    print("Right-click over the emulator window to translate. The click is consumed.")
-    print("The watcher exits automatically when the emulator closes.")
+    print("Right-click over the target window to translate. The click is consumed.")
+    print("The watcher exits automatically when the target window closes.")
     print("Press Ctrl+C to stop.\n")
 
-    mouse_hook = GlobalMouseTriggerHook(args.title)
+    mouse_hook = GlobalMouseTriggerHook(args.title, args.hwnd)
     mouse_hook.start()
-    display = None if args.no_popup else LiveTranslationWindow(args.title)
+    display = None if args.no_popup else LiveTranslationWindow(args.title, args.hwnd)
     next_layout_check = 0.0
-    seen_emulator = args.emulator_pid is not None
+    seen_target = args.emulator_pid is not None or args.hwnd is not None
     try:
         while True:
-            emulator_alive = emulator_is_running(args.title, args.emulator_pid)
-            if emulator_alive:
-                seen_emulator = True
-            elif seen_emulator:
-                print("\nEmulator closed; stopping translation watcher.")
+            target_alive = emulator_is_running(
+                args.title,
+                args.emulator_pid,
+                args.hwnd,
+            )
+            if target_alive:
+                seen_target = True
+            elif seen_target:
+                print("\nTarget window closed; stopping translation watcher.")
                 return
 
             try:
@@ -830,7 +871,7 @@ def run_watch(args):
                 if display:
                     display.position_below_emulator()
                     display.hide_for_capture()
-                image, title = capture_window_image(args.title)
+                image, title = capture_window_image(args.title, args.hwnd)
                 if display:
                     display.position_below_emulator()
                     display.show_after_capture()
@@ -867,6 +908,11 @@ def main():
         description="Capture the PC-98 emulator window and translate visible Japanese text."
     )
     parser.add_argument("--title", default="Neko", help="Window title hint to capture.")
+    parser.add_argument(
+        "--hwnd",
+        type=lambda value: int(value, 0),
+        help="Exact target window handle, decimal or 0x-prefixed hex.",
+    )
     parser.add_argument(
         "--language", default="English", help="Target translation language."
     )
